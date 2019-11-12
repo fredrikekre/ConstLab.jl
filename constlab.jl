@@ -4,7 +4,7 @@ cd("c:\\users\\mgjo\\Box Sync\\Documents\\Research projects\\juliaprogram\\const
 
 using Tensors,PGFPlotsX,LaTeXStrings
 using ForwardDiff
-use DelimetedFiles
+using DelimetedFiles
 
 include("materials.jl");
 

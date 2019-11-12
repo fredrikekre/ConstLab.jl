@@ -7,50 +7,50 @@
 function time_hist(nsteps,tol_unb,model,tol,σ_hist,ϵ_hist,nstate,stateold,dt,npara,mpara,unkn,notunkn)
 
 
-ϵ_out=zeros(nsteps); σ_out=zeros(nsteps); σ_out2=zeros(nsteps);
-strainv=zeros(9); stressv=zeros(9); dstrain=zeros(9); strainold=zeros(9); stressold=zeros(9);
-stress_out=zeros(9); strain_out=zeros(9); statenew=zeros(nstate); lconv=1
-#println("ppp",notunkn)
-#println("qqq",unkn)
-nunkn=size(unkn,1)
+    ϵ_out=zeros(nsteps); σ_out=zeros(nsteps); σ_out2=zeros(nsteps);
+    strainv=zeros(9); stressv=zeros(9); dstrain=zeros(9); strainold=zeros(9); stressold=zeros(9);
+    stress_out=zeros(9); strain_out=zeros(9); statenew=zeros(nstate); lconv=1
+    #println("ppp",notunkn)
+    #println("qqq",unkn)
+    nunkn=size(unkn,1)
 
-kalle=zeros(9)
+    kalle=zeros(9)
 
-for n=1:nsteps
-
-
-  stressv[unkn]=σ_hist[n]*ones(nunkn);
-  strainv[notunkn]=ϵ_hist[n]*ones(nnotunkn);
+    for n=1:nsteps
 
 
-  stress_out,strain_out,statenew,lconv=solve_stress_iteration(tol_unb,model,tol,strainold,stressold,nstate,stateold,strainv,dt,npara,mpara,stressv,unkn)
-
-  #push!(ϵ_out, c)
-  ϵ_out[n]=strain_out[1]
-  #push!(σ_out, stress_out[1])
-  σ_out[n]=stress_out[1]
-  #push!(σ_out2,stress_out[2])
-  σ_out2[n]=stress_out[2]
-
-  stressv,strainv,stressold,strainold,stateold=update_variables(stress_out,strain_out,statenew)
+        stressv[unkn]=σ_hist[n]*ones(nunkn);
+        strainv[notunkn]=ϵ_hist[n]*ones(nnotunkn);
 
 
+        stress_out,strain_out,statenew,lconv=solve_stress_iteration(tol_unb,model,tol,strainold,stressold,nstate,stateold,strainv,dt,npara,mpara,stressv,unkn)
 
-end
+        #push!(ϵ_out, c)
+        ϵ_out[n]=strain_out[1]
+        #push!(σ_out, stress_out[1])
+        σ_out[n]=stress_out[1]
+        #push!(σ_out2,stress_out[2])
+        σ_out2[n]=stress_out[2]
+
+        stressv,strainv,stressold,strainold,stateold=update_variables(stress_out,strain_out,statenew)
 
 
-#end time stepping function
 
-return ϵ_out,σ_out,σ_out2
+    end
+
+
+    #end time stepping function
+
+    return ϵ_out,σ_out,σ_out2
 end
 
 
 function update_variables(stress_out,strain_out,statenew)
-  stressv=stress_out*1.; strainv=strain_out*1.;
-  stressold=stress_out*1.; strainold=strain_out*1.;
-  stateold=statenew*1.
+    stressv=stress_out*1.; strainv=strain_out*1.;
+    stressold=stress_out*1.; strainold=strain_out*1.;
+    stateold=statenew*1.
 
-  return stressv,strainv,stressold,strainold,stateold
+    return stressv,strainv,stressold,strainold,stateold
 
 end
 
@@ -68,37 +68,35 @@ function solve_stress_iteration(tol_unb,model,tol,strainold,stressold,nstate,sta
   #Array{Float64}(undef, 2)
 
 
-  #
-  while res_unb>tol_unb
-
-     dstrain=strainv-strainold
-
-
-     stress_out, statenew, stiffv, lconv = constitutive_driver(model,tol,strainold,stressold,nstate,stateold,dstrain,dt,npara,mpara)
-
-
-     if (size(unkn,1)>0)
-
-         stress_unbalance=stress_out[unkn]-stressv[unkn]
-         res_unb=norm(stress_unbalance)
-         niter=niter+1
-         println("unb=  ",res_unb,"   niter=",niter) #,"   dstrain=",dstrain)
-         #println("s11= ",stress_out[1])
-
-         #Newton update
-         strainv[unkn]=strainv[unkn]-inv(stiffv[unkn,unkn])*stress_unbalance
-
-     else
-         res_unb=0.e0
-     end
-
-
     #
-  end #while
+    while res_unb>tol_unb
 
-    strain_out=strainv*1.
+        dstrain=strainv-strainold
 
-    return stress_out,strain_out,statenew,lconv
+
+        stress_out, statenew, stiffv, lconv = constitutive_driver(model,tol,strainold,stressold,nstate,stateold,dstrain,dt,npara,mpara)
+
+
+        if (size(unkn,1)>0)
+
+            stress_unbalance=stress_out[unkn]-stressv[unkn]
+            res_unb=norm(stress_unbalance)
+            niter=niter+1
+            println("unb=  ",res_unb,"   niter=",niter) #,"   dstrain=",dstrain)
+            #println("s11= ",stress_out[1])
+
+            #Newton update
+            strainv[unkn]=strainv[unkn]-inv(stiffv[unkn,unkn])*stress_unbalance
+
+        else
+            res_unb=0.e0
+        end
+
+    end #while
+
+    strain_out=strainv
+
+    return stress_out, strain_out, statenew, lconv
 
 
 end
@@ -155,38 +153,38 @@ end
 
 function constitutive_driver(model,tol,strainold,stressold,nstate,stateold,dstrain,dt,npara,mpara)
 
-stressout=zeros(9); statenew=zeros(nstate); stiffv=zeros(9,9); lconv=1;
+    stressout=zeros(9); statenew=zeros(nstate); stiffv=zeros(9,9); lconv=1;
 
-if model==1
+    if model==1
 
-  stiffv=tovoigt(hookeiso_stiff(mpara[1],mpara[2]))
-  stress_out=stressold+stiffv*dstrain
-  statenew=stateold*1.
-elseif model==2
+      stiffv=tovoigt(hookeiso_stiff(mpara[1],mpara[2]))
+      stress_out=stressold+stiffv*dstrain
+      statenew=stateold*1.
+    elseif model==2
 
-  stiffv=tovoigt(hookeiso_stiff(mpara[1],mpara[2]))
-  stress_out=stressold+stiffv*dstrain
-  #println(stress_out,stressold,"****")
-  statenew=stateold*1.
-  xinit=zeros(20)
-  xinit[1:9]=stressold; xinit[10:19]=stateold; xinit[20]=0.
-  stress_out,statenew,stiffv=local_problem(xinit,model,tol,strainold,stressold,nstate,stateold,dstrain,dt,npara,mpara)
+      stiffv=tovoigt(hookeiso_stiff(mpara[1],mpara[2]))
+      stress_out=stressold+stiffv*dstrain
+      #println(stress_out,stressold,"****")
+      statenew=stateold*1.
+      xinit=zeros(20)
+      xinit[1:9]=stressold; xinit[10:19]=stateold; xinit[20]=0.
+      stress_out, statenew, stiffv = local_problem(xinit,model,tol,strainold,stressold,nstate,stateold,dstrain,dt,npara,mpara)
 
-else model==3
+    else model==3
 
-  stiffv=tovoigt(hookeiso_stiff(mpara[1],mpara[2]))
-  stress_out=stressold+stiffv*dstrain
-  #println(stress_out,stressold,"****")
-  statenew=stateold*1.
-  xinit=zeros(9)
-  xinit[1:9]=stressold;
-  stress_out,statenew,stiffv=local_problem_ve(xinit,model,tol,strainold,stressold,nstate,stateold,dstrain,dt,npara,mpara)
+      stiffv=tovoigt(hookeiso_stiff(mpara[1],mpara[2]))
+      stress_out=stressold+stiffv*dstrain
+      #println(stress_out,stressold,"****")
+      statenew=stateold*1.
+      xinit=zeros(9)
+      xinit[1:9]=stressold;
+      stress_out,statenew,stiffv=local_problem_ve(xinit,model,tol,strainold,stressold,nstate,stateold,dstrain,dt,npara,mpara)
 
-end
+    end
 
 
 
-return stress_out, statenew, stiffv, lconv
+    return stress_out, statenew, stiffv, lconv
 
 end
 ################# solve local problem
@@ -220,55 +218,55 @@ end
 function local_problem_ve(xinit,model,tol,strainold,stressold,nstate,stateold,dstrain,dt,npara,mpara)
 
 
-nunkn=size(xinit,1)
-iter=0; x=zeros(nunkn)
-x=xinit
-maxitr=50
-stress_out=zeros(9)
-statenew=zeros(nstate)
+    nunkn=size(xinit,1)
+    iter=0; x=zeros(nunkn)
+    x=xinit
+    maxitr=50
+    stress_out=zeros(9)
+    statenew=zeros(nstate)
 
-R=zeros(eltype(x), nunkn)
-#dR=zeros(eltype(x), [20,20])
+    R=zeros(eltype(x), nunkn)
+    #dR=zeros(eltype(x), [20,20])
 
-#elastic trial step
-C=hookeiso_stiff(mpara[1],mpara[2])
+    #elastic trial step
+    C=hookeiso_stiff(mpara[1],mpara[2])
 
 
-Jacob=zeros(nunkn,nunkn)
-while true; iter+=1
+    Jacob=zeros(nunkn,nunkn)
+    while true; iter+=1
 
-    R=local_unbalance_ve(x,model,strainold,stressold,nstate,stateold,dstrain,dt,npara,mpara)
+        R=local_unbalance_ve(x,model,strainold,stressold,nstate,stateold,dstrain,dt,npara,mpara)
 
-    if norm(R)< tol
-      Jacob=ForwardDiff.jacobian(y->local_unbalance_ve(y,model,strainold,stressold,nstate,stateold,dstrain,dt,npara,mpara),x)
-      break
+        if norm(R)< tol
+          Jacob=ForwardDiff.jacobian(y->local_unbalance_ve(y,model,strainold,stressold,nstate,stateold,dstrain,dt,npara,mpara),x)
+          break
+        end
+        if iter > maxitr
+                    error("Local problem did not converge aftter $maxitr iterations.")
+        end
+        dR=ForwardDiff.jacobian(y->local_unbalance_ve(y,model,strainold,stressold,nstate,stateold,dstrain,dt,npara,mpara),x)
+    #   println("***  ",ForwardDiff.jacobian(y->local_unbalance(y,model,strainold,stressold,nstate,stateold,dstrain,dt,npara,mpara),x))
+        #Δx = -dR\R
+        #x += Δx
+        #println(dR)
+        x=x-dR\R
+
     end
-    if iter > maxitr
-                error("Local problem did not converge aftter $maxitr iterations.")
-    end
-    dR=ForwardDiff.jacobian(y->local_unbalance_ve(y,model,strainold,stressold,nstate,stateold,dstrain,dt,npara,mpara),x)
-#   println("***  ",ForwardDiff.jacobian(y->local_unbalance(y,model,strainold,stressold,nstate,stateold,dstrain,dt,npara,mpara),x))
-    #Δx = -dR\R
-    #x += Δx
-    #println(dR)
-    x=x-dR\R
 
-end
-
-invJacob=inv(Jacob)
-ats=tovoigt(dcontract(fromvoigt(Tensor{4,3},invJacob[1:9,1:9]),C))
+    invJacob=inv(Jacob)
+    ats=tovoigt(dcontract(fromvoigt(Tensor{4,3},invJacob[1:9,1:9]),C))
 
 
-stress=fromvoigt(Tensor{2,3},x[1:9]);
-statenew=stateold
+    stress=fromvoigt(Tensor{2,3},x[1:9]);
+    statenew=stateold
 
 
 
-stress_out=tovoigt(stress)
+    stress_out=tovoigt(stress)
 
 
 
-return stress_out,statenew,ats
+    return stress_out,statenew,ats
 end
 
 
