@@ -65,18 +65,21 @@ function constitutive_driver(model::Plastic, ε::SymmetricTensor, state::Plastic
     # Assume elastic step
     Δε = ε - state.ε
     σ_tr_dev = dev(state.σ + 2G * Δε)
+    @show mise(σ_tr_dev - state.α)
     Φ = mise(σ_tr_dev - state.α) - σ_y - state.κ
     # @show Φ
     if Φ < 0 # elastic
+        @info "elastic"
         σ_dev = σ_tr_dev # + K * tr(ε) * one(σ_tr_dev)
         κ = state.κ
         α = state.α
         μ = state.μ
     else
+        @info "plastic"
         # need to iterate
         σ_dev, κ, α, μ = solve_local_problem(model, Δε, state)
         # σ = σ_dev + K * tr(ε) * one(σ_tr_dev)
-        @show mise(σ_dev - α) - σ_y - κ
+        # @show mise(σ_dev - α) - σ_y - κ
     end
     σ = σ_dev + K * tr(ε) * one(σ_dev)
     return PlasticState(ε, σ, κ, α, μ)
@@ -105,16 +108,16 @@ function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::Plast
     σₙ = state.σ
     κₙ = state.κ
     αₙ = state.α
-    μₙ = state.μ
+    μₙ = state.μ * 0 # ??
 
-    σₙ_dev = dev(σₙ - αₙ)
+    # σₙ_dev = dev(σₙ - αₙ)
     σ_tr_dev = dev(σₙ) + 2G * dev(Δε)
 
     # pack variables
     X = zeros(14)
     # ΔX = zeros(14)
     R = zeros(14)
-    pack_variables!(X, σ_tr_dev, state.κ, state.α, state.μ)
+    pack_variables!(X, σ_tr_dev, κₙ, αₙ, μₙ)
 
     function residual!(R, X)
         fill!(R, 0)
@@ -124,8 +127,8 @@ function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::Plast
 
         # Compute residuals
         Rσ = dev(σ) - σ_tr_dev + 3G*μ/mise(σ_red_dev) * σ_red_dev
-        Rκ = κ - κₙ - r*H*μ*(1 - κ/κ∞)
-        Rα = dev(α) - αₙ - (1-r) * H * μ * (σ_red_dev / mise(σ_red_dev) - 1/α∞ * dev(α))
+        Rκ = κ - κₙ - r * H * μ * (1 - κ/κ∞)
+        Rα = dev(α) - dev(αₙ) - (1-r) * H * μ * (σ_red_dev / mise(σ_red_dev) - 1/α∞ * dev(α))
         RΦ = mise(σ_red_dev) - σ_y - κ
 
         # populate R
@@ -142,20 +145,18 @@ function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::Plast
         ForwardDiff.jacobian!(out, residual!, R, X, cfg)
         g = DiffResults.value(out)
         J = DiffResults.jacobian(out)
-        @show g
-        if norm(g) < 1e-10
-            @info "converged" iters norm(g)
+        if norm(g, Inf) < 1e-6
+            @info "local problem converged" iters norm(g)
             break
         elseif iters > 20
             error("did not converge")
         end
-        @show norm(g)
-        ΔX = J\g
+        ΔX = J \ g
         X .-= ΔX
     end
-
     σ, κ, α, μ = extract_variables(X)
-    return σ, κ, α, μ
+    @info "local problem converged" dev(σ) κ dev(α) μ
+    return dev(σ), κ, dev(α), μ
 end
 
 
@@ -174,6 +175,7 @@ function integrate(model::Material, ctrl::ControlType, time, state::T) where {T 
     states = T[]
     for (i, t) in enumerate(time)
         ε = ctrl.f(t)
+        @show ε
         state′ = constitutive_driver(model, ε, state)
         push!(states, state′)
         state = state′
