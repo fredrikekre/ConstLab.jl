@@ -150,6 +150,12 @@ function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::Plast
         Rα = dev(α) - dev(αₙ) - (1-r) * H * μ * (σ_red_dev / mise(σ_red_dev) - 1/α∞ * dev(α))
         RΦ = mise(σ_red_dev) - σ_y - κ
 
+        # Scale stresses with σ_y to make the residual dimensionless
+        Rσ /= σ_y
+        Rκ /= σ_y
+        Rα /= σ_y
+        RΦ /= σ_y
+
         # Populate residual vector R
         pack_variables!(R, Rσ, Rκ, Rα, RΦ)
         return R
@@ -198,7 +204,7 @@ function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::Plast
     σ, κ, α, μ = extract_variables(X)
     # Extract ATS tensor from final Jacobian
     dRdε = elastic_tangent(model) # For fixed X
-    Jt = fromvoigt(SymmetricTensor{4,3}, J)
+    Jt = fromvoigt(SymmetricTensor{4,3}, J) * σ_y # Residual scaled with σ_y
     dσdε = inv(Jt) ⊡ dRdε
 
     return dev(σ), κ, dev(α), μ, dσdε
