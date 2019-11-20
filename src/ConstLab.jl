@@ -1,7 +1,7 @@
 module ConstLab
 
 using Tensors, Parameters
-import NLsolve, ForwardDiff
+import NLsolve, ForwardDiff, DiffResults
 
 # Stress and strain control
 abstract type ControlType end
@@ -101,7 +101,8 @@ function constitutive_driver(model::Plastic, ε::SymmetricTensor, state::Plastic
 end
 
 function pack_variables(σ, κ, α, μ::T) where T
-    n = length(σ) + length(κ) + length(α) + length(μ)
+    n = length(σ.data) + length(κ) + length(α.data) + length(μ)
+    @assert n == 14 # hehe
     X = Vector{T}(undef, n)
     return pack_variables!(X, σ, κ, α, μ)
 end
@@ -197,7 +198,7 @@ function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::Plast
     σ, κ, α, μ = extract_variables(X)
     # Extract ATS tensor from final Jacobian
     dRdε = elastic_tangent(model) # For fixed X
-    Jt = fromvoigt(Tensor{4,3}, J)
+    Jt = fromvoigt(SymmetricTensor{4,3}, J)
     dσdε = inv(Jt) ⊡ dRdε
 
     return dev(σ), κ, dev(α), μ, dσdε
