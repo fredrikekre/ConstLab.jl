@@ -175,37 +175,40 @@ function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::Plast
     cache = NLsolve.OnceDifferentiable(residual!, X0, R; autodiff=:forward)
     res = NLsolve.nlsolve(cache, X0; params...)
     NLsolve.converged(res) || error("local problem did not converge: $res")
+    @show res
     X = res.zero # Solution to the problem
     J = cache.DF # Extract Jacobian from last step
 
-    # # Custom implementation of Newton's algorithm
-    # X = X0 # zeros(14)
-    # R = zeros(14)
-    # cfg = ForwardDiff.JacobianConfig(residual!, R, X)
-    # out = DiffResults.JacobianResult(X)
-    # iters = 0
-    # local J
-    # while true; iters += 1
-    #     # residual!(R, X)
-    #     ForwardDiff.jacobian!(out, residual!, R, X, cfg)
-    #     g = DiffResults.value(out)
-    #     J = DiffResults.jacobian(out)
-    #     if norm(g) < 1e-6
-    #         @info "local problem converged" iters norm(g)
-    #         break
-    #     elseif iters > 20
-    #         error("did not converge")
-    #     end
-    #     ΔX = J \ g
-    #     X .-= ΔX
-    # end
+    # Custom implementation of Newton's algorithm
+    X′ = copy(X0) # zeros(14)
+    R = zeros(14)
+    cfg = ForwardDiff.JacobianConfig(residual!, R, X′)
+    out = DiffResults.JacobianResult(X′)
+    iters = 0
+    local J
+    while true; iters += 1
+        # residual!(R, X′)
+        ForwardDiff.jacobian!(out, residual!, R, X′, cfg)
+        g = DiffResults.value(out)
+        J = DiffResults.jacobian(out)
+        @info "local problem:" iters norm(g, Inf)
+        if norm(g, Inf) < 1e-6
+            @info "local problem converged:" iters norm(g, Inf)
+            break
+        elseif iters > 20
+            error("did not converge")
+        end
+        ΔX = J \ g
+        X′ .-= ΔX
+    end
 
     # Extract variables from the solution X
     σ, κ, α, μ = extract_variables(X)
     # Extract ATS tensor from final Jacobian
     dRdε = elastic_tangent(model) # For fixed X
     Jt = fromvoigt(SymmetricTensor{4,3}, J) * σ_y # Residual scaled with σ_y
-    dσdε = inv(Jt) ⊡ dRdε
+    # dσdε = inv(Jt) ⊡ dRdε
+    dσdε = Jt ⊡ dRdε
 
     return dev(σ), κ, dev(α), μ, dσdε
 end
