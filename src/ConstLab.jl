@@ -161,9 +161,8 @@ function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::Plast
         return R
     end
 
-    USE_NLSOLVE = true
+    USE_NLSOLVE = false
 
-if USE_NLSOLVE
     # Use NLsolve to solve non-linear system
     params = Dict{Symbol,Any}(:ftol=>1e-6, :show_trace=>false, :method=>:newton, :show_trace=>true)
     merge!(params, solver_params)
@@ -173,24 +172,23 @@ if USE_NLSOLVE
     NLsolve.converged(res) || error("local problem did not converge: $res")
     X = res.zero # Solution to the problem
     J = cache.DF # Extract Jacobian from last step
-end
 
     # Custom implementation of Newton's algorithm
-if !USE_NLSOLVE
-    X = copy(X0) # zeros(14)
+    X′ = copy(X0) # zeros(14)
     R = zeros(14)
-    cfg = ForwardDiff.JacobianConfig(residual!, R, X)
-    out = DiffResults.JacobianResult(X)
+    cfg = ForwardDiff.JacobianConfig(residual!, R, X′)
+    out = DiffResults.JacobianResult(X′)
     iters = 0
     local J
-    println("Iter     f(x) inf-norm    Step 2-norm")
+    println("Iter     f(X′) inf-norm    Step 2-norm")
     println("----     -------------    -----------")
-    ΔX = NaN 
+    ΔX′ = NaN 
+    prev_X′ = copy(X)
     while true; iters += 1
-        ForwardDiff.jacobian!(out, residual!, R, X, cfg)
+        ForwardDiff.jacobian!(out, residual!, R, X′, cfg)
         g = DiffResults.value(out)
         J = DiffResults.jacobian(out)
-        @printf("%6d   %14e   %14e\n", iters, norm(g, Inf), sum(abs2, ΔX))
+        @printf("%6d   %14e   %14e\n", iters, norm(g, Inf), NLsolve.sqeuclidean(X′, prev_X′))
         #@info "local problem:" iters norm(g, Inf)
         if norm(g, Inf) < 1e-6
             # @info "local problem converged:" iters norm(g, Inf)
@@ -198,10 +196,16 @@ if !USE_NLSOLVE
         elseif iters > 20
             error("did not converge")
         end
-        ΔX = J \ g
-        X .-= ΔX
+        ΔX′ = J \ g
+        copy!(prev_X′, X)
+        X′ .-= ΔX′
     end
-end
+
+    if !(X ≈ X′)
+        display(X)
+        display(X′)
+        error("not almost equal")
+    end
 
     # Extract variables from the solution X
     σ, κ, α, μ = extract_variables(X)
