@@ -1,6 +1,6 @@
 module ConstLab
 
-using Tensors, Parameters
+using Tensors, Parameters, Printf
 import NLsolve, ForwardDiff, DiffResults
 
 # Stress and strain control
@@ -161,46 +161,47 @@ function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::Plast
         return R
     end
 
-    # Use NLsolve to solve non-linear system
-    params = Dict{Symbol,Any}(:autodiff=>:forward, :ftol=>1e-6, :show_trace=>false)
-    merge!(params, solver_params)
-    res = NLsolve.nlsolve(residual!, X0; params...)
-    NLsolve.converged(res) || error("old local problem did not converge: $res")
-    X = res.zero
+    USE_NLSOLVE = true
 
+if USE_NLSOLVE
     # Use NLsolve to solve non-linear system
-    params = Dict{Symbol,Any}(:ftol=>1e-6, :show_trace=>false)
+    params = Dict{Symbol,Any}(:ftol=>1e-6, :show_trace=>false, :method=>:newton, :show_trace=>true)
     merge!(params, solver_params)
     R = similar(X0) # residual cache for constructing OnceDifferentiable (not used :( )
     cache = NLsolve.OnceDifferentiable(residual!, X0, R; autodiff=:forward)
     res = NLsolve.nlsolve(cache, X0; params...)
     NLsolve.converged(res) || error("local problem did not converge: $res")
-    @show res
     X = res.zero # Solution to the problem
     J = cache.DF # Extract Jacobian from last step
+end
 
     # Custom implementation of Newton's algorithm
-    X′ = copy(X0) # zeros(14)
+if !USE_NLSOLVE
+    X = copy(X0) # zeros(14)
     R = zeros(14)
-    cfg = ForwardDiff.JacobianConfig(residual!, R, X′)
-    out = DiffResults.JacobianResult(X′)
+    cfg = ForwardDiff.JacobianConfig(residual!, R, X)
+    out = DiffResults.JacobianResult(X)
     iters = 0
     local J
+    println("Iter     f(x) inf-norm    Step 2-norm")
+    println("----     -------------    -----------")
+    ΔX = NaN 
     while true; iters += 1
-        # residual!(R, X′)
-        ForwardDiff.jacobian!(out, residual!, R, X′, cfg)
+        ForwardDiff.jacobian!(out, residual!, R, X, cfg)
         g = DiffResults.value(out)
         J = DiffResults.jacobian(out)
-        @info "local problem:" iters norm(g, Inf)
+        @printf("%6d   %14e   %14e\n", iters, norm(g, Inf), sum(abs2, ΔX))
+        #@info "local problem:" iters norm(g, Inf)
         if norm(g, Inf) < 1e-6
-            @info "local problem converged:" iters norm(g, Inf)
+            # @info "local problem converged:" iters norm(g, Inf)
             break
         elseif iters > 20
             error("did not converge")
         end
         ΔX = J \ g
-        X′ .-= ΔX
+        X .-= ΔX
     end
+end
 
     # Extract variables from the solution X
     σ, κ, α, μ = extract_variables(X)
@@ -228,6 +229,7 @@ function integrate(model::Material, ctrl::ControlType, time, state::T;
         solver_params=Dict{Symbol,Any}()) where {T <: MaterialState}
     states = T[]
     for (i, t) in enumerate(time)
+        @show t
         ε = ctrl.f(t)
         σ, dσdε, state′ = constitutive_driver(model, ε, state; solver_params=solver_params)
         push!(states, state′)
