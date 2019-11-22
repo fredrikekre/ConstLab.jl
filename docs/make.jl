@@ -1,10 +1,12 @@
 using Documenter, ConstLab
+ENV["JULIA_DEBUG"] = "Documenter"
 # Load remaining dependencies to avoid leaking
 # precompiling ... into the docs.
 import PGFPlotsX, LaTeXStrings, Literate, Tensors
 
 if haskey(ENV, "GITHUB_ACTIONS")
     PGFPlotsX.latexengine!(PGFPlotsX.PDFLATEX)
+    ENV["GITHUB_EVENT_PATH"] = joinpath(@__DIR__, "actions-event.json")
 end
 
 # Generate examples

@@ -17,4 +17,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
-        run: docker run --env-file docs/docker-env.list -t -v $PWD:/mnt -w /mnt tkpapp/texlive-julia-minimal docs/docker-script.sh 1.1
+        run: |
+          cp $GITHUB_EVENT_PATH docs/actions-event.json
+          docker run --env-file docs/docker-env.list -t -v $PWD:/mnt -w /mnt tkpapp/texlive-julia-minimal docs/docker-script.sh 1.2
