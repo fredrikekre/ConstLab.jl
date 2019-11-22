@@ -1,4 +1,11 @@
 using Documenter, ConstLab
+# Load remaining dependencies to avoid leaking
+# precompiling ... into the docs.
+import PGFPlotsX, LaTeXStrings, Literate, Tensors
+
+if haskey(ENV, "GITHUB_ACTIONS")
+    PGFPlotsX.latexengine!(PGFPlotsX.PDFLATEX)
+end
 
 # Generate examples
 include("generate.jl")
@@ -9,7 +16,7 @@ GENERATEDEXAMPLES = [joinpath("examples", f) for f in (
 
 # Build documentation.
 makedocs(
-    format = Documenter.HTML(prettyurls = haskey(ENV, "HAS_JOSH_K_SEAL_OF_APPROVAL")), # disable for local builds
+    format = Documenter.HTML(prettyurls = haskey(ENV, "GITHUB_ACTIONS")), # disable for local builds
     sitename = "ConstLab.jl",
     doctest = false,
     strict = false,
@@ -22,4 +29,5 @@ makedocs(
 # Deploy built documentation from Travis.
 deploydocs(
     repo = "github.com/fredrikekre/ConstLab.jl.git",
+    push_preview = true,
 )
