@@ -38,7 +38,7 @@ s0 = let z = zero(SymmetricTensor{2,3})
 end
 
 # ## Do integration
-res = ConstLab.integrate(model, ctrl, time, s0);
+res = ConstLab.integrate(model, ctrl, time, s0; solver_params=Dict(:method => :newton));
 
 
 # ## Plot results
