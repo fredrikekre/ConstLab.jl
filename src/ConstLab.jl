@@ -13,10 +13,12 @@ struct StressControl <: ControlType
 end
 struct MixedControl <: ControlType
     strain
-    strain_mask
+    strain_mask::Vector{Bool}
     stress
-    stress_mask
+    stress_mask::Vector{Bool}
     function MixedControl(strain, strain_mask, stress, stress_mask)
+        strain_mask = collect(strain_mask.data)
+        stress_mask = collect(stress_mask.data)
         for (a, b) in zip(strain_mask, stress_mask)
             a ⊻ b || error("no can do")
         end
@@ -100,8 +102,11 @@ function constitutive_driver(model::Plastic, ε::SymmetricTensor, state::Plastic
         μ = state.μ
         dσdε = elastic_tangent(model)
     else
+        println("Plasticity with ε = $ε")
         # need to iterate
         σ_dev, κ, α, μ, dσdε = solve_local_problem(model, Δε, state; solver_params=solver_params)
+        @bp
+        _ = rand()
     end
     σ = σ_dev + K * tr(ε) * one(σ_dev) # Add mean part
     return σ, dσdε, PlasticState(ε, σ, κ, α, μ)
@@ -131,6 +136,7 @@ function extract_variables(X)
     return σ, κ, α, μ
 end
 
+
 function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::PlasticState{D,N}; solver_params=Dict{Symbol,Any}()) where {D,N}
     # extract material parameters
     @unpack G, K, σ_y, κ∞, α∞, r, H = model
@@ -157,11 +163,11 @@ function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::Plast
         Rα = dev(α) - dev(αₙ) - (1-r) * H * μ * (σ_red_dev / mise(σ_red_dev) - 1/α∞ * dev(α))
         RΦ = mise(σ_red_dev) - σ_y - κ
 
-        # # # Scale stresses with σ_y to make the residual dimensionless
-        Rσ /= σ_y
-        Rκ /= σ_y
-        Rα /= σ_y
-        RΦ /= σ_y
+        # # # # Scale stresses with σ_y to make the residual dimensionless
+        # Rσ /= σ_y
+        # Rκ /= σ_y
+        # Rα /= σ_y
+        # RΦ /= σ_y
 
         # Populate residual vector R
         pack_variables!(R, Rσ, Rκ, Rα, RΦ)
@@ -223,9 +229,12 @@ function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::Plast
     σ, κ, α, μ = extract_variables(X)
     # Extract ATS tensor from final Jacobian
     dRdε = elastic_tangent(model) # For fixed X
-    Jinv = inv(J * σ_y) # scale with σ_y since residual scaled with σ_y
+    Jinv = inv(J) # * σ_y) # scale with σ_y since residual scaled with σ_y
     Jinv_t = fromvoigt(SymmetricTensor{4,3}, Jinv; offset_i=0, offset_j=0) # * σ_y # Residual scaled with σ_y
-    dσdε = Jinv_t ⊡ dRdε
+    dσdevdε = Jinv_t ⊡ dRdε
+
+    # Add dσdεv volumetric part
+    dσdε = dσdevdε + K * otimes(one(SymmetricTensor{2,3}), one(SymmetricTensor{2,3}))
 
     return dev(σ), κ, dev(α), μ, dσdε
 end
@@ -292,6 +301,7 @@ end
 
 function integrate(model::Material, ctrl::MixedControl, time, state::T;
         solver_params=Dict{Symbol,Any}()) where {T <: MaterialState}
+    # @bp
     states = T[]
     for (i, t) in enumerate(time)
         # Compute controlled strain
@@ -306,8 +316,10 @@ function integrate(model::Material, ctrl::MixedControl, time, state::T;
         iters = 0
         Δε = zero(state.ε)
         while true; iters += 1
+            # @bp
             # Current guess
-            ε = SymmetricTensor{2,3}(ε_c .* ctrl.strain_mask .+ (state.ε .+ Δε) .* ctrl.stress_mask)
+            ε = SymmetricTensor{2,3}(ε_c.data .* ctrl.strain_mask .+ (state.ε.data .+ Δε.data) .* ctrl.stress_mask)
+            # @bp
             # ε = SymmetricTensor{2,3}() do i, j
             #     if ctrl.strain_mask[i,j]
             #         return ε_c[i,j]
@@ -319,20 +331,26 @@ function integrate(model::Material, ctrl::MixedControl, time, state::T;
             σ′, dσdε, state′ = constitutive_driver(model, ε, state; solver_params=solver_params)
 
             # Compute stress residual
-            R = SymmetricTensor{2,3}(σ′ - (σ .* ctrl.strain_mask + σ_c .* ctrl.stress_mask))
-
+            # @bp
+            R = (tovoigt(σ′) - tovoigt(σ_c))[ctrl.stress_mask]
+            # R = SymmetricTensor{2,3}(σ′ - (σ′ .* ctrl.strain_mask + σ_c .* ctrl.stress_mask))
+            # println("norm(R) = ", norm(R))
+            # @bp
             if norm(R) < 1e-5 # TOL
-                println("converged in $iters iterations")
+                # println("converged in $iters iterations")
+                # @bp
                 break
             elseif iters > 20
                 error("strain did not converge")
             end
             # Take a step in strain
-            # J = tovoigt(dσdε)
-            ΔΔε = - inv(dσdε) ⊡ R
-            Δε += ΔΔε
-            println("computed new step Δε = ", Δε)
-            flush(stdout); flush(stderr)
+            # @bp
+            J = tovoigt(dσdε)[ctrl.stress_mask, ctrl.stress_mask]
+            ΔΔε = - J \ R
+            ΔΔε_a = zeros(6)
+            ΔΔε_a[ctrl.stress_mask] .= ΔΔε
+            ΔΔε_t = fromvoigt(SymmetricTensor{2,3}, ΔΔε_a)
+            Δε += ΔΔε_t
         end
         # Done, store stuff
         push!(states, state′)
