@@ -7,7 +7,7 @@ using Tensors
 # Values from Kim
 ε_amp = 0.05
 # ctrl = StrainControl((t) -> SymmetricTensor{2,3}((i,j) -> i == j == 1 ? ε_amp*t : 0.0))
-time = range(0.0, 1.0; length=1001)
+time = range(0.0, 1.0; length=101)
 
 # Set material parameters
 E = 200e9
