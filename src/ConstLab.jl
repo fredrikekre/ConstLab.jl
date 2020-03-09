@@ -9,7 +9,24 @@ struct StrainControl <: ControlType
     f # f(t) -> strain
 end
 struct StressControl <: ControlType
+    # TODO: Make this just a MixedControl instead,
+    # no gain in having a separate type
     f # f(t) -> stress
+end
+struct MixedControl <: ControlType
+    # TODO: improve this masking by e.g. making masks 4th order tensors
+    strain
+    strain_mask::Vector{Bool}
+    stress
+    stress_mask::Vector{Bool}
+    function MixedControl(strain, strain_mask, stress, stress_mask)
+        strain_mask = collect(strain_mask.data)
+        stress_mask = collect(stress_mask.data)
+        for (a, b) in zip(strain_mask, stress_mask)
+            a ⊻ b || error("no can do")
+        end
+        return new(strain, strain_mask, stress, stress_mask)
+    end
 end
 
 ###############################################
@@ -210,7 +227,7 @@ end
 
 Integrate the material response.
 """
-function integrate(model::Material, ctrl::ControlType, time, state::T;
+function integrate(model::Material, ctrl::StrainControl, time, state::T;
         solver_params=Dict{Symbol,Any}()) where {T <: MaterialState}
     states = T[]
     for (i, t) in enumerate(time)
@@ -221,5 +238,50 @@ function integrate(model::Material, ctrl::ControlType, time, state::T;
     end
     return states
 end
+
+function integrate(model::Material, ctrl::MixedControl, time, state::T;
+        solver_params=Dict{Symbol,Any}()) where {T <: MaterialState}
+    states = T[]
+    for (i, t) in enumerate(time)
+        # Compute controlled strain
+        ε_c = ctrl.strain(t)
+        # Compute controlled stress
+        σ_c = ctrl.stress(t)
+
+        # Iterate to find the correct strain
+        local state′
+        iters = 0
+        Δε = zero(state.ε) # initial guess
+        # println("----- strain iterations -----")
+        while true; iters += 1
+            # Current guess
+            ε = SymmetricTensor{2,3}(ε_c.data .* ctrl.strain_mask .+ (state.ε.data .+ Δε.data) .* ctrl.stress_mask)
+
+            σ′, dσdε, state′ = constitutive_driver(model, ε, state; solver_params=solver_params)
+
+            # Compute stress residual
+            R = tovoigt(σ′ - σ_c)[ctrl.stress_mask]
+            # println("norm(R) = ", norm(R))
+            if norm(R)/model.σ_y < 1e-6 # TOL
+                # println("strain iterations converged in $iters iterations")
+                break
+            elseif iters > 20
+                error("strain iterations did not converge")
+            end
+            # Take a step in strain
+            J = tovoigt(dσdε)[ctrl.stress_mask, ctrl.stress_mask]
+            ΔΔε = - J \ R
+            ΔΔε_a = zeros(6)
+            ΔΔε_a[ctrl.stress_mask] .= ΔΔε
+            ΔΔε_t = fromvoigt(SymmetricTensor{2,3}, ΔΔε_a)
+            Δε += ΔΔε_t
+        end
+        # Done, store stuff
+        push!(states, state′)
+        state = state′
+    end
+    return states
+end
+
 
 end # module
