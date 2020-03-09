@@ -78,25 +78,19 @@ function constitutive_driver(model::Plastic, ε::SymmetricTensor, state::Plastic
 
     # Assume elastic step
     Δε = ε - state.ε
-    σ_tr_dev = dev(state.σ + 2G * Δε)
-    # @show mise(σ_tr_dev - state.α)
-    Φ = mise(σ_tr_dev - state.α) - σ_y - state.κ
-    # @show Φ
-    if Φ < 0 # elastic
-        # @info "elastic step" Φ
-        σ_dev = σ_tr_dev
+    σ_tr = state.σ + 2G * dev(Δε) + K * tr(Δε) * one(Δε)
+    Φ = mise(σ_tr - state.α) - σ_y - state.κ
+    if Φ < 0
+        # elastic
+        σ = σ_tr
         κ = state.κ
         α = state.α
         μ = state.μ
         dσdε = elastic_tangent(model)
     else
-        # @info "plastic step; solving local problem" Φ
-        # need to iterate
-        σ_dev, κ, α, μ, dσdε = solve_local_problem(model, Δε, state; solver_params=solver_params)
-        # σ = σ_dev + K * tr(ε) * one(σ_tr_dev)
-        # @show mise(σ_dev - α) - σ_y - κ
+        # plastic; need to iterate
+        σ, κ, α, μ, dσdε = solve_local_problem(model, Δε, state; solver_params=solver_params)
     end
-    σ = σ_dev + K * tr(ε) * one(σ_dev)
     return σ, dσdε, PlasticState(ε, σ, κ, α, μ)
 end
 
@@ -124,6 +118,7 @@ function extract_variables(X)
     return σ, κ, α, μ
 end
 
+
 function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::PlasticState{D,N}; solver_params=Dict{Symbol,Any}()) where {D,N}
     # extract material parameters
     @unpack G, K, σ_y, κ∞, α∞, r, H = model
@@ -132,10 +127,10 @@ function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::Plast
     κₙ = state.κ
     αₙ = state.α
     μₙ = state.μ * 0 # ??
-    σ_tr_dev = dev(σₙ) + 2G * dev(Δε)
+    σ_tr = σₙ + 2G * dev(Δε) + K * tr(Δε) * one(Δε)
 
     # Initial guess
-    X0 = pack_variables(σ_tr_dev, κₙ, αₙ, μₙ)
+    X0 = pack_variables(σ_tr, κₙ, αₙ, μₙ)
 
     # Residual function
     function residual!(R, X)
@@ -145,9 +140,9 @@ function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::Plast
         σ_red_dev = dev(σ - α)
 
         # Compute residuals
-        Rσ = dev(σ) - σ_tr_dev + 3G*μ/mise(σ_red_dev) * σ_red_dev
+        Rσ = σ - σ_tr + 3G*μ/mise(σ_red_dev) * σ_red_dev
         Rκ = κ - κₙ - r * H * μ * (1 - κ/κ∞)
-        Rα = dev(α) - dev(αₙ) - (1-r) * H * μ * (σ_red_dev / mise(σ_red_dev) - 1/α∞ * dev(α))
+        Rα = α - αₙ - (1-r) * H * μ * (σ_red_dev / mise(σ_red_dev) - α/α∞)
         RΦ = mise(σ_red_dev) - σ_y - κ
 
         # Scale stresses with σ_y to make the residual dimensionless
@@ -162,14 +157,7 @@ function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::Plast
     end
 
     # Use NLsolve to solve non-linear system
-    params = Dict{Symbol,Any}(:autodiff=>:forward, :ftol=>1e-6, :show_trace=>false)
-    merge!(params, solver_params)
-    res = NLsolve.nlsolve(residual!, X0; params...)
-    NLsolve.converged(res) || error("old local problem did not converge: $res")
-    X = res.zero
-
-    # Use NLsolve to solve non-linear system
-    params = Dict{Symbol,Any}(:ftol=>1e-6, :show_trace=>false)
+    params = Dict{Symbol,Any}(:ftol=>1e-14, :show_trace=>false)
     merge!(params, solver_params)
     R = similar(X0) # residual cache for constructing OnceDifferentiable (not used :( )
     cache = NLsolve.OnceDifferentiable(residual!, X0, R; autodiff=:forward)
@@ -204,10 +192,11 @@ function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::Plast
     σ, κ, α, μ = extract_variables(X)
     # Extract ATS tensor from final Jacobian
     dRdε = elastic_tangent(model) # For fixed X
-    Jt = fromvoigt(SymmetricTensor{4,3}, J) * σ_y # Residual scaled with σ_y
-    dσdε = inv(Jt) ⊡ dRdε
+    Jinv = inv(J)
+    Jinv_t = fromvoigt(SymmetricTensor{4,3}, Jinv; offset_i=0, offset_j=0)
+    dσdε = (Jinv_t / σ_y) ⊡ dRdε # scale Jacobian with σ_y since residual scaled with σ_y
 
-    return dev(σ), κ, dev(α), μ, dσdε
+    return σ, κ, α, μ, dσdε
 end
 
 
