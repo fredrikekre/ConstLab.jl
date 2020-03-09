@@ -1,5 +1,5 @@
 using Documenter, ConstLab
-ENV["JULIA_DEBUG"] = "Documenter"
+ENV["JULIA_DEBUG"] = "Documenter,LiveServer"
 # Load remaining dependencies to avoid leaking
 # precompiling ... into the docs.
 import PGFPlotsX, LaTeXStrings, Literate, Tensors
@@ -18,10 +18,14 @@ GENERATEDEXAMPLES = [joinpath("examples", f) for f in (
 
 # Build documentation.
 makedocs(
-    format = Documenter.HTML(prettyurls = haskey(ENV, "GITHUB_ACTIONS")), # disable for local builds
+    format = Documenter.HTML(
+        prettyurls = haskey(ENV, "GITHUB_ACTIONS"), # disable for local builds
+        assets = ["assets/custom.css"], # white background for images in documenter-dark
+    ),
     sitename = "ConstLab.jl",
     doctest = false,
     strict = false,
+    clean = !isdefined(Main, :LiveServer),
     pages = Any[
         "Home" => "index.md",
         "Examples" => GENERATEDEXAMPLES,
