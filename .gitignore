@@ -4,3 +4,4 @@
 docs/build/
 docs/src/examples/
 *.DS_Store
+/Manifest.toml
