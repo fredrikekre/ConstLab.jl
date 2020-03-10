@@ -74,7 +74,7 @@ end
 struct PlasticState{D,N} <: MaterialState
     ε::SymmetricTensor{2,D,Float64,N}
     σ::SymmetricTensor{2,D,Float64,N}
-    # εₚ::SymmetricTensor{2,D,Float64,N} # ??
+    εₚ::SymmetricTensor{2,D,Float64,N}
     κ::Float64
     α::SymmetricTensor{2,D,Float64,N}
     μ::Float64
@@ -82,7 +82,7 @@ end
 # Initial state
 function PlasticState{D}() where D
     z = zero(SymmetricTensor{2,D})
-    return PlasticState(z, z, #=z,=# 0.0, z, 0.0)
+    return PlasticState(z, z, z, 0.0, z, 0.0)
 end
 
 function elastic_tangent(model::Plastic)
@@ -110,15 +110,16 @@ function constitutive_driver(model::Plastic, ε::SymmetricTensor, state::Plastic
     if Φ < 0
         # elastic
         σ = σ_tr
+        εₚ = state.εₚ
         κ = state.κ
         α = state.α
         μ = state.μ
         dσdε = elastic_tangent(model)
     else
         # plastic; need to iterate
-        σ, κ, α, μ, dσdε = solve_local_problem(model, Δε, state; solver_params=solver_params)
+        σ, εₚ, κ, α, μ, dσdε = solve_local_problem(model, Δε, state; solver_params=solver_params)
     end
-    return σ, dσdε, PlasticState(ε, σ, κ, α, μ)
+    return σ, dσdε, PlasticState(ε, σ, εₚ, κ, α, μ)
 end
 
 function pack_variables(σ, κ, α, μ::T) where T
@@ -151,6 +152,7 @@ function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::Plast
     @unpack G, K, σ_y, κ∞, α∞, r, H = model
 
     σₙ = state.σ
+    εₚₙ = state.εₚ
     κₙ = state.κ
     αₙ = state.α
     μₙ = state.μ * 0 # ??
@@ -223,7 +225,11 @@ function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::Plast
     Jinv_t = fromvoigt(SymmetricTensor{4,3}, Jinv; offset_i=0, offset_j=0)
     dσdε = (Jinv_t / σ_y) ⊡ dRdε # scale Jacobian with σ_y since residual scaled with σ_y
 
-    return σ, κ, α, μ, dσdε
+    # Compute plastic strain; dεₚdt = λ ν -> εₚ = εₚₙ + Δt λ ν = εₚₙ + μ ν
+    ν = 3/2 * dev(σ - α) / mise(dev(σ - α))
+    εₚ = εₚₙ + μ * ν
+
+    return σ, εₚ, κ, α, μ, dσdε
 end
 
 
