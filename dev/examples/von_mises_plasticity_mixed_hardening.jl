@@ -27,9 +27,7 @@ r = 0.5
 
 model = Plastic(G, K, σ_y, H, κ∞, α∞, r);
 
-s0 = let z = zero(SymmetricTensor{2,3})
-    PlasticState(z, z, 0.0, z, 0.0)
-end;
+s0 = PlasticState{3}();
 
 res = ConstLab.integrate(model, ctrl, timesteps, s0; solver_params=Dict(:method => :newton));
 
