@@ -20,7 +20,7 @@ GENERATEDEXAMPLES = [joinpath("examples", f) for f in (
 makedocs(
     format = Documenter.HTML(
         prettyurls = haskey(ENV, "GITHUB_ACTIONS"), # disable for local builds
-        assets = ["assets/custom.css"], # white background for images in documenter-dark
+        assets = ["assets/custom.css"],
     ),
     sitename = "ConstLab.jl",
     doctest = false,
