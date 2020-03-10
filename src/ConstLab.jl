@@ -48,6 +48,11 @@ struct LinearElasticState{D,N} <: MaterialState
     ε::SymmetricTensor{2,D,Float64,N}
     σ::SymmetricTensor{2,D,Float64,N}
 end
+function LinearElasticState{D}() where D
+    z = zero(SymmetricTensor{2,D})
+    return LinearElasticState(z, z)
+end
+
 function constitutive_driver(model::LinearElastic, ε::SymmetricTensor, state::LinearElasticState)
     G, K = model.G, model.K
     σ = 2G * dev(ε) + 3K * vol(ε)
@@ -73,6 +78,11 @@ struct PlasticState{D,N} <: MaterialState
     κ::Float64
     α::SymmetricTensor{2,D,Float64,N}
     μ::Float64
+end
+# Initial state
+function PlasticState{D}() where D
+    z = zero(SymmetricTensor{2,D})
+    return PlasticState(z, z, #=z,=# 0.0, z, 0.0)
 end
 
 function elastic_tangent(model::Plastic)

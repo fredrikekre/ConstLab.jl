@@ -11,7 +11,8 @@ Parameters = "d96e819e-fc66-5662-9728-84c9c7592b0a"
 Tensors = "48a634ad-e948-5137-8d70-aa71f2a747f4"
 
 [extras]
+LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test"]
+test = ["LaTeXStrings", "Test"]
