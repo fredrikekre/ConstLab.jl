@@ -1,0 +1,6 @@
+/* white background for better images in documenter-dark */
+article#documenter-page svg {
+    width: 50%;
+    height: 50%;
+    background-color: white;
+}
