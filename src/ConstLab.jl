@@ -186,7 +186,7 @@ function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::Plast
     end
 
     # Use NLsolve to solve non-linear system
-    params = Dict{Symbol,Any}(:ftol=>1e-14, :show_trace=>false)
+    params = Dict{Symbol,Any}(:ftol=>1e-14, :show_trace=>false, :method => :newton)
     merge!(params, solver_params)
     R = similar(X0) # residual cache for constructing OnceDifferentiable (not used :( )
     cache = NLsolve.OnceDifferentiable(residual!, X0, R; autodiff=:forward)
