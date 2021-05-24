@@ -130,18 +130,18 @@ function pack_variables(σ, κ, α, μ::T) where T
 end
 
 function pack_variables!(X, σ, κ, α, μ)
-    tovoigt!(X, σ)
+    tomandel!(X, σ)
     X[7] = κ
-    tovoigt!(X, α; offset=6+1)
+    tomandel!(X, α; offset=6+1)
     X[end] = μ
     return X
 end
 
 function extract_variables(X)
     N = 6
-    σ = fromvoigt(SymmetricTensor{2,3}, X)
+    σ = frommandel(SymmetricTensor{2,3}, X)
     κ = X[N+1]
-    α = fromvoigt(SymmetricTensor{2,3}, X; offset=N+1)
+    α = frommandel(SymmetricTensor{2,3}, X; offset=N+1)
     μ = X[end]
     return σ, κ, α, μ
 end
@@ -222,7 +222,7 @@ function solve_local_problem(model::Plastic, Δε::SymmetricTensor, state::Plast
     # Extract ATS tensor from final Jacobian
     dRdε = elastic_tangent(model) # For fixed X
     Jinv = inv(J)
-    Jinv_t = fromvoigt(SymmetricTensor{4,3}, Jinv; offset_i=0, offset_j=0)
+    Jinv_t = frommandel(SymmetricTensor{4,3}, Jinv; offset_i=0, offset_j=0)
     dσdε = (Jinv_t / σ_y) ⊡ dRdε # scale Jacobian with σ_y since residual scaled with σ_y
 
     # Compute plastic strain; dεₚdt = λ ν -> εₚ = εₚₙ + Δt λ ν = εₚₙ + μ ν
