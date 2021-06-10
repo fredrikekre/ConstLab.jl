@@ -13356,6 +13356,33 @@ $$</li>
         <span class="k">end</span>
     <span class="k">end</span>
     <span class="k">return</span> <span class="n">ge</span>
+<span class="k">end</span>
+
+<span class="s">&quot;&quot;&quot;</span>
+<span class="s">Standard element routine for computing internal forces and tangent</span>
+<span class="s">&quot;&quot;&quot;</span>
+<span class="k">function</span> <span class="n">int_f_K</span><span class="p">(</span><span class="n">ue</span><span class="o">::</span><span class="kt">Vector</span><span class="p">{</span><span class="n">D</span><span class="p">},</span> <span class="n">mat</span><span class="p">)</span> <span class="n">where</span> <span class="n">D</span>
+    <span class="c"># Allocate the residual of type D (important since D might be Dual)</span>
+    <span class="n">N</span> <span class="o">=</span> <span class="n">length</span><span class="p">(</span><span class="n">ue</span><span class="p">)</span>
+    <span class="n">ge</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">(</span><span class="n">D</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
+    <span class="n">ke</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">(</span><span class="n">D</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
+    <span class="c"># Loop over the quadrature points in the element</span>
+    <span class="k">for</span> <span class="n">qp</span> <span class="kp">in</span> <span class="mi">1</span><span class="o">:</span><span class="n">getnquadpoints</span><span class="p">(</span><span class="n">cv</span><span class="p">)</span>
+        <span class="n">dΩ</span> <span class="o">=</span> <span class="n">getdetJdV</span><span class="p">(</span><span class="n">cv</span><span class="p">,</span> <span class="n">qp</span><span class="p">)</span>
+        <span class="c"># Compute current strain for this quadrature point</span>
+        <span class="n">ε</span> <span class="o">=</span> <span class="n">function_symmetric_gradient</span><span class="p">(</span><span class="n">cv</span><span class="p">,</span> <span class="n">qp</span><span class="p">,</span> <span class="n">ue</span><span class="p">)</span>
+        <span class="c"># Compute current stress for this quadrature point</span>
+        <span class="n">σ</span><span class="p">,</span> <span class="n">dσdε</span> <span class="o">=</span> <span class="n">constitutive_driver</span><span class="p">(</span><span class="n">mat</span><span class="p">,</span> <span class="n">ε</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="kp">in</span> <span class="mi">1</span><span class="o">:</span><span class="n">getnbasefunctions</span><span class="p">(</span><span class="n">cv</span><span class="p">)</span>
+            <span class="n">δεi</span> <span class="o">=</span> <span class="n">shape_symmetric_gradient</span><span class="p">(</span><span class="n">cv</span><span class="p">,</span> <span class="n">qp</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+            <span class="n">ge</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="p">(</span> <span class="n">δεi</span> <span class="n">⊡</span> <span class="n">σ</span> <span class="p">)</span> <span class="o">*</span> <span class="n">dΩ</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="kp">in</span> <span class="mi">1</span><span class="o">:</span><span class="n">getnbasefunctions</span><span class="p">(</span><span class="n">cv</span><span class="p">)</span>
+                <span class="n">δεj</span> <span class="o">=</span> <span class="n">shape_symmetric_gradient</span><span class="p">(</span><span class="n">cv</span><span class="p">,</span> <span class="n">qp</span><span class="p">,</span> <span class="n">j</span><span class="p">)</span>
+                <span class="n">ke</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">+=</span> <span class="p">(</span> <span class="n">δεi</span> <span class="n">⊡</span> <span class="n">dσdε</span> <span class="n">⊡</span> <span class="n">δεj</span> <span class="p">)</span> <span class="o">*</span> <span class="n">dΩ</span>
+            <span class="k">end</span>
+        <span class="k">end</span>
+    <span class="k">end</span>
+    <span class="k">return</span> <span class="n">ge</span><span class="p">,</span> <span class="n">ke</span>
 <span class="k">end</span><span class="p">;</span>
 </pre></div>
 
@@ -13418,11 +13445,23 @@ $$</li>
     <span class="k">for</span> <span class="p">(</span><span class="n">idx</span><span class="p">,</span> <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">))</span> <span class="kp">in</span> <span class="n">enumerate</span><span class="p">(((</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span><span class="mi">3</span><span class="p">),</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">),</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">3</span><span class="p">),</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">)))</span> <span class="c"># Voigt order</span>
         <span class="n">Ep_ε</span><span class="p">[</span><span class="n">idx</span><span class="p">,</span> <span class="o">:</span><span class="p">]</span> <span class="o">.=</span> <span class="n">ForwardDiff</span><span class="o">.</span><span class="n">partials</span><span class="p">(</span><span class="n">ε</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">])</span>
     <span class="k">end</span>
+    <span class="c">## Convert to Mandel form</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="kp">in</span> <span class="mi">1</span><span class="o">:</span><span class="n">size</span><span class="p">(</span><span class="n">Ep_ε</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">tomandel!</span><span class="p">(</span><span class="n">view</span><span class="p">(</span><span class="n">Ep_ε</span><span class="p">,</span> <span class="o">:</span><span class="p">,</span> <span class="n">i</span><span class="p">),</span>
+            <span class="n">fromvoigt</span><span class="p">(</span><span class="n">SymmetricTensor</span><span class="p">{</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">},</span> <span class="n">view</span><span class="p">(</span><span class="n">Ep_ε</span><span class="p">,</span> <span class="o">:</span><span class="p">,</span> <span class="n">i</span><span class="p">))</span>
+        <span class="p">)</span>
+    <span class="k">end</span>
 
     <span class="c"># Step 3b: Propagate derivative</span>
-    <span class="n">J̃</span> <span class="o">=</span> <span class="n">tomandel</span><span class="p">(</span><span class="n">J</span><span class="p">)</span> <span class="o">*</span> <span class="n">Ep_ε</span> <span class="c"># Why mandel??? This is magic to me.</span>
+    <span class="n">J̃</span> <span class="o">=</span> <span class="n">tomandel</span><span class="p">(</span><span class="n">J</span><span class="p">)</span> <span class="o">*</span> <span class="n">Ep_ε</span>
 
     <span class="c"># Step 4: Construct output</span>
+    <span class="c">## Convert from Mandel form</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="kp">in</span> <span class="mi">1</span><span class="o">:</span><span class="n">size</span><span class="p">(</span><span class="n">J̃</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">tovoigt!</span><span class="p">(</span><span class="n">view</span><span class="p">(</span><span class="n">J̃</span><span class="p">,</span> <span class="o">:</span><span class="p">,</span> <span class="n">i</span><span class="p">),</span>
+            <span class="n">frommandel</span><span class="p">(</span><span class="n">SymmetricTensor</span><span class="p">{</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">},</span> <span class="n">view</span><span class="p">(</span><span class="n">J̃</span><span class="p">,</span> <span class="o">:</span><span class="p">,</span> <span class="n">i</span><span class="p">))</span>
+        <span class="p">)</span>
+    <span class="k">end</span>
     <span class="n">ret</span> <span class="o">=</span> <span class="n">SymmetricTensor</span><span class="p">{</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">}()</span> <span class="k">do</span> <span class="n">i</span><span class="p">,</span> <span class="n">j</span>
         <span class="n">idx</span> <span class="o">=</span> <span class="n">Tensors</span><span class="o">.</span><span class="n">DEFAULT_VOIGT_ORDER</span><span class="p">[</span><span class="mi">3</span><span class="p">][</span><span class="n">j</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span>
         <span class="n">D</span><span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">],</span> <span class="n">ForwardDiff</span><span class="o">.</span><span class="n">Partials</span><span class="p">(</span><span class="kt">Tuple</span><span class="p">(</span><span class="n">J̃</span><span class="p">[</span><span class="n">idx</span><span class="p">,</span> <span class="o">:</span><span class="p">])))</span>
@@ -13439,7 +13478,9 @@ $$</li>
 <span class="k">function</span> <span class="n">compute_tangent</span><span class="p">(</span><span class="n">m</span><span class="o">::</span><span class="n">LinearElastic</span><span class="p">,</span> <span class="n">ε</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">m</span><span class="o">.</span><span class="n">C</span>
     <span class="c"># Alternative: Tensors.gradient(x -&gt; compute_stress(m, x), ε)</span>
-<span class="k">end</span><span class="p">;</span>
+<span class="k">end</span>
+
+<span class="n">constitutive_driver</span><span class="p">(</span><span class="n">m</span><span class="o">::</span><span class="n">LinearElastic</span><span class="p">,</span> <span class="n">ε</span><span class="p">)</span> <span class="o">=</span> <span class="p">(</span><span class="n">compute_stress</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">ε</span><span class="p">),</span> <span class="n">compute_tangent</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">ε</span><span class="p">));</span>
 </pre></div>
 
     </div>
@@ -13566,7 +13607,7 @@ $$</li>
 <div class="prompt input_prompt">In&nbsp;[11]:</div>
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-julia"><pre><span></span><span class="n">ke_ad</span> <span class="n">≈</span> <span class="n">ke_fd</span>
+<div class=" highlight hl-julia"><pre><span></span><span class="n">ke_ana</span> <span class="o">=</span> <span class="n">int_f_K</span><span class="p">(</span><span class="n">ue</span><span class="p">,</span> <span class="n">elastic</span><span class="p">)[</span><span class="mi">2</span><span class="p">]</span>
 </pre></div>
 
     </div>
@@ -13580,6 +13621,63 @@ $$</li>
 <div class="output_area">
 
     <div class="prompt output_prompt">Out[11]:</div>
+
+
+
+
+<div class="output_text output_subarea output_execute_result">
+<pre>24×24 Matrix{Float64}:
+  5.28846e10   2.40385e10   2.40385e10  …  -4.80769e9   -4.80769e9
+  2.40385e10   5.28846e10   2.40385e10     -3.36538e10  -2.40385e10
+  2.40385e10   2.40385e10   5.28846e10     -2.40385e10  -3.36538e10
+ -1.44231e10  -4.80769e9   -4.80769e9       2.40385e10   2.40385e10
+  4.80769e9    3.36538e10   2.40385e10     -5.28846e10  -2.40385e10
+  4.80769e9    2.40385e10   3.36538e10  …  -2.40385e10  -5.28846e10
+ -3.36538e10  -2.40385e10  -4.80769e9       4.80769e9    2.40385e10
+ -2.40385e10  -3.36538e10  -4.80769e9       1.44231e10   4.80769e9
+  4.80769e9    4.80769e9    1.44231e10     -4.80769e9   -3.36538e10
+  3.36538e10   4.80769e9    2.40385e10     -2.40385e10  -4.80769e9
+ -4.80769e9   -1.44231e10  -4.80769e9   …   3.36538e10   4.80769e9
+  2.40385e10   4.80769e9    3.36538e10     -4.80769e9   -1.44231e10
+  3.36538e10   2.40385e10   4.80769e9      -4.80769e9   -2.40385e10
+  2.40385e10   3.36538e10   4.80769e9      -1.44231e10  -4.80769e9
+ -4.80769e9   -4.80769e9   -1.44231e10      4.80769e9    3.36538e10
+ -3.36538e10  -4.80769e9   -2.40385e10  …   2.40385e10   4.80769e9
+  4.80769e9    1.44231e10   4.80769e9      -3.36538e10  -4.80769e9
+ -2.40385e10  -4.80769e9   -3.36538e10      4.80769e9    1.44231e10
+ -5.28846e10  -2.40385e10  -2.40385e10      4.80769e9    4.80769e9
+ -2.40385e10  -5.28846e10  -2.40385e10      3.36538e10   2.40385e10
+ -2.40385e10  -2.40385e10  -5.28846e10  …   2.40385e10   3.36538e10
+  1.44231e10   4.80769e9    4.80769e9      -2.40385e10  -2.40385e10
+ -4.80769e9   -3.36538e10  -2.40385e10      5.28846e10   2.40385e10
+ -4.80769e9   -2.40385e10  -3.36538e10      2.40385e10   5.28846e10</pre>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[12]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-julia"><pre><span></span><span class="n">ke_ad</span> <span class="n">≈</span> <span class="n">ke_fd</span> <span class="n">≈</span> <span class="n">ke_ana</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area">
+
+    <div class="prompt output_prompt">Out[12]:</div>
 
 
 
@@ -13603,7 +13701,7 @@ $$</li>
 </div>
 <div class="cell border-box-sizing code_cell rendered">
 <div class="input">
-<div class="prompt input_prompt">In&nbsp;[12]:</div>
+<div class="prompt input_prompt">In&nbsp;[13]:</div>
 <div class="inner_cell">
     <div class="input_area">
 <div class=" highlight hl-julia"><pre><span></span><span class="kd">const</span> <span class="n">plastic</span><span class="p">,</span> <span class="n">state</span> <span class="o">=</span> <span class="k">let</span> 
@@ -13618,6 +13716,12 @@ $$</li>
     <span class="n">r</span> <span class="o">=</span> <span class="mf">0.5</span>
 
     <span class="n">ConstLab</span><span class="o">.</span><span class="n">Plastic</span><span class="p">(</span><span class="n">G</span><span class="p">,</span> <span class="n">K</span><span class="p">,</span> <span class="n">σ_y</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">κ∞</span><span class="p">,</span> <span class="n">α∞</span><span class="p">,</span> <span class="n">r</span><span class="p">),</span> <span class="n">ConstLab</span><span class="o">.</span><span class="n">PlasticState</span><span class="p">{</span><span class="mi">3</span><span class="p">}()</span>
+<span class="k">end</span>
+
+<span class="c"># Convenience wrapper around ConstLab.constitutive_driver that drops state</span>
+<span class="k">function</span> <span class="n">constitutive_driver</span><span class="p">(</span><span class="n">m</span><span class="o">::</span><span class="n">ConstLab</span><span class="o">.</span><span class="n">Plastic</span><span class="p">,</span> <span class="n">ε</span><span class="p">)</span>
+    <span class="n">σ</span><span class="p">,</span> <span class="n">dσdε</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">ConstLab</span><span class="o">.</span><span class="n">constitutive_driver</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">ε</span><span class="p">,</span> <span class="n">state</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">σ</span><span class="p">,</span> <span class="n">dσdε</span>
 <span class="k">end</span><span class="p">;</span>
 </pre></div>
 
@@ -13628,7 +13732,7 @@ $$</li>
 </div>
 <div class="cell border-box-sizing code_cell rendered">
 <div class="input">
-<div class="prompt input_prompt">In&nbsp;[13]:</div>
+<div class="prompt input_prompt">In&nbsp;[14]:</div>
 <div class="inner_cell">
     <div class="input_area">
 <div class=" highlight hl-julia"><pre><span></span><span class="s">&quot;&quot;&quot;</span>
@@ -13649,18 +13753,30 @@ $$</li>
     <span class="c"># Step 1b and 2: Compute the function value and derivative (σ, dσdε)</span>
     <span class="c">## Inside this constitutive driver Newton iterations are performed and that would be</span>
     <span class="c">## extremely costly if the dual parts from the element had to be carried along...</span>
-    <span class="n">v</span><span class="p">,</span> <span class="n">J</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">ConstLab</span><span class="o">.</span><span class="n">constitutive_driver</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">Re_ε</span><span class="p">,</span> <span class="n">state</span><span class="p">)</span>
+    <span class="n">v</span><span class="p">,</span> <span class="n">J</span> <span class="o">=</span> <span class="n">constitutive_driver</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">Re_ε</span><span class="p">)</span>
 
     <span class="c"># Step 3a: Extract dual parts from input</span>
     <span class="n">Ep_ε</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">(</span><span class="n">T</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="n">NChunk</span><span class="p">)</span>
     <span class="k">for</span> <span class="p">(</span><span class="n">idx</span><span class="p">,</span> <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">))</span> <span class="kp">in</span> <span class="n">enumerate</span><span class="p">(((</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span><span class="mi">3</span><span class="p">),</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">),</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">3</span><span class="p">),</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">)))</span> <span class="c"># Voigt order</span>
         <span class="n">Ep_ε</span><span class="p">[</span><span class="n">idx</span><span class="p">,</span> <span class="o">:</span><span class="p">]</span> <span class="o">.=</span> <span class="n">ForwardDiff</span><span class="o">.</span><span class="n">partials</span><span class="p">(</span><span class="n">ε</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">])</span>
     <span class="k">end</span>
+    <span class="c">## Convert to Mandel form</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="kp">in</span> <span class="mi">1</span><span class="o">:</span><span class="n">size</span><span class="p">(</span><span class="n">Ep_ε</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">tomandel!</span><span class="p">(</span><span class="n">view</span><span class="p">(</span><span class="n">Ep_ε</span><span class="p">,</span> <span class="o">:</span><span class="p">,</span> <span class="n">i</span><span class="p">),</span>
+            <span class="n">fromvoigt</span><span class="p">(</span><span class="n">SymmetricTensor</span><span class="p">{</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">},</span> <span class="n">view</span><span class="p">(</span><span class="n">Ep_ε</span><span class="p">,</span> <span class="o">:</span><span class="p">,</span> <span class="n">i</span><span class="p">))</span>
+        <span class="p">)</span>
+    <span class="k">end</span>
 
     <span class="c"># Step 3b: Propagate derivative</span>
     <span class="n">J̃</span> <span class="o">=</span> <span class="n">tomandel</span><span class="p">(</span><span class="n">J</span><span class="p">)</span> <span class="o">*</span> <span class="n">Ep_ε</span>
 
     <span class="c"># Step 4: Construct output</span>
+    <span class="c">## Convert from Mandel form</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="kp">in</span> <span class="mi">1</span><span class="o">:</span><span class="n">size</span><span class="p">(</span><span class="n">J̃</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">tovoigt!</span><span class="p">(</span><span class="n">view</span><span class="p">(</span><span class="n">J̃</span><span class="p">,</span> <span class="o">:</span><span class="p">,</span> <span class="n">i</span><span class="p">),</span>
+            <span class="n">frommandel</span><span class="p">(</span><span class="n">SymmetricTensor</span><span class="p">{</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">},</span> <span class="n">view</span><span class="p">(</span><span class="n">J̃</span><span class="p">,</span> <span class="o">:</span><span class="p">,</span> <span class="n">i</span><span class="p">))</span>
+        <span class="p">)</span>
+    <span class="k">end</span>
     <span class="n">ret</span> <span class="o">=</span> <span class="n">SymmetricTensor</span><span class="p">{</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">}()</span> <span class="k">do</span> <span class="n">i</span><span class="p">,</span> <span class="n">j</span>
         <span class="n">idx</span> <span class="o">=</span> <span class="n">Tensors</span><span class="o">.</span><span class="n">DEFAULT_VOIGT_ORDER</span><span class="p">[</span><span class="mi">3</span><span class="p">][</span><span class="n">j</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span>
         <span class="n">D</span><span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">],</span> <span class="n">ForwardDiff</span><span class="o">.</span><span class="n">Partials</span><span class="p">(</span><span class="kt">Tuple</span><span class="p">(</span><span class="n">J̃</span><span class="p">[</span><span class="n">idx</span><span class="p">,</span> <span class="o">:</span><span class="p">])))</span>
@@ -13677,67 +13793,10 @@ $$</li>
 </div>
 <div class="cell border-box-sizing code_cell rendered">
 <div class="input">
-<div class="prompt input_prompt">In&nbsp;[14]:</div>
-<div class="inner_cell">
-    <div class="input_area">
-<div class=" highlight hl-julia"><pre><span></span><span class="n">ke_ad</span> <span class="o">=</span> <span class="n">ForwardDiff</span><span class="o">.</span><span class="n">jacobian</span><span class="p">(</span><span class="n">x</span> <span class="o">-&gt;</span> <span class="n">int_f</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">plastic</span><span class="p">),</span> <span class="n">ue</span><span class="p">)</span>
-</pre></div>
-
-    </div>
-</div>
-</div>
-
-<div class="output_wrapper">
-<div class="output">
-
-
-<div class="output_area">
-
-    <div class="prompt output_prompt">Out[14]:</div>
-
-
-
-
-<div class="output_text output_subarea output_execute_result">
-<pre>24×24 Matrix{Float64}:
-  3.26509e10   2.18908e10   2.08702e10  …  -1.5931e10   -1.54436e10
-  2.28418e10   3.00069e10   1.76931e10     -2.48588e10  -2.03828e10
-  2.27722e10   1.86441e10   2.42554e10     -2.08006e10  -2.20755e10
- -1.9838e10   -1.94325e10  -2.22734e10      2.44413e10   2.57981e10
-  1.64065e10   2.48588e10   2.03251e10     -3.20242e10  -2.167e10
-  1.63946e10   2.13338e10   2.30265e10  …  -2.21455e10  -3.11428e10
- -2.62733e10  -2.45805e10  -1.96414e10      1.72759e10   2.45109e10
- -2.30148e10  -2.75485e10  -1.90962e10      2.03831e10   1.77514e10
-  1.65676e10   1.88754e10   2.44296e10     -1.76698e10  -2.85114e10
-  2.62156e10   1.67427e10   2.35023e10     -2.30964e10  -1.67308e10
- -1.65796e10  -2.24004e10  -2.17283e10  …   2.75485e10   1.90386e10
-  2.29452e10   1.61857e10   2.56585e10     -1.63249e10  -1.94441e10
-  2.62733e10   2.45805e10   1.96414e10     -1.72759e10  -2.45109e10
-  2.30148e10   2.75485e10   1.90962e10     -2.03831e10  -1.77514e10
- -1.65676e10  -1.88754e10  -2.44296e10      1.76698e10   2.85114e10
- -2.62156e10  -1.67427e10  -2.35023e10  …   2.30964e10   1.67308e10
-  1.65796e10   2.24004e10   2.17283e10     -2.75485e10  -1.90386e10
- -2.29452e10  -1.61857e10  -2.56585e10      1.63249e10   1.94441e10
- -3.26509e10  -2.18908e10  -2.08702e10      1.5931e10    1.54436e10
- -2.28418e10  -3.00069e10  -1.76931e10      2.48588e10   2.03828e10
- -2.27722e10  -1.86441e10  -2.42554e10  …   2.08006e10   2.20755e10
-  1.9838e10    1.94325e10   2.22734e10     -2.44413e10  -2.57981e10
- -1.64065e10  -2.48588e10  -2.03251e10      3.20242e10   2.167e10
- -1.63946e10  -2.13338e10  -2.30265e10      2.21455e10   3.11428e10</pre>
-</div>
-
-</div>
-
-</div>
-</div>
-
-</div>
-<div class="cell border-box-sizing code_cell rendered">
-<div class="input">
 <div class="prompt input_prompt">In&nbsp;[15]:</div>
 <div class="inner_cell">
     <div class="input_area">
-<div class=" highlight hl-julia"><pre><span></span><span class="n">ke_fd</span> <span class="o">=</span> <span class="n">FiniteDifferences</span><span class="o">.</span><span class="n">jacobian</span><span class="p">(</span><span class="n">central_fdm</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">x</span> <span class="o">-&gt;</span> <span class="n">int_f</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">plastic</span><span class="p">),</span> <span class="n">ue</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+<div class=" highlight hl-julia"><pre><span></span><span class="n">ke_ad</span> <span class="o">=</span> <span class="n">ForwardDiff</span><span class="o">.</span><span class="n">jacobian</span><span class="p">(</span><span class="n">x</span> <span class="o">-&gt;</span> <span class="n">int_f</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">plastic</span><span class="p">),</span> <span class="n">ue</span><span class="p">)</span>
 </pre></div>
 
     </div>
@@ -13781,6 +13840,153 @@ $$</li>
   2.05512e10   1.98264e10   2.2348e10      -2.46382e10  -2.54788e10
  -1.6128e10   -2.48588e10  -2.06037e10      3.20242e10   2.19485e10
  -1.59599e10  -2.09399e10  -2.26734e10      2.19485e10   3.11836e10</pre>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[16]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-julia"><pre><span></span><span class="n">ke_fd</span> <span class="o">=</span> <span class="n">FiniteDifferences</span><span class="o">.</span><span class="n">jacobian</span><span class="p">(</span><span class="n">central_fdm</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">x</span> <span class="o">-&gt;</span> <span class="n">int_f</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">plastic</span><span class="p">),</span> <span class="n">ue</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area">
+
+    <div class="prompt output_prompt">Out[16]:</div>
+
+
+
+
+<div class="output_text output_subarea output_execute_result">
+<pre>24×24 Matrix{Float64}:
+  3.25285e10   2.22847e10   2.17804e10  …  -1.6128e10   -1.59599e10
+  2.22847e10   3.00069e10   1.82501e10     -2.48588e10  -2.09399e10
+  2.17804e10   1.82501e10   2.44593e10     -2.06037e10  -2.26734e10
+ -2.05512e10  -1.98264e10  -2.2348e10       2.46382e10   2.54788e10
+  1.6128e10    2.48588e10   2.06037e10     -3.20242e10  -2.19485e10
+  1.59599e10   2.09399e10   2.26734e10  …  -2.19485e10  -3.11836e10
+ -2.6708e10   -2.49744e10  -1.99945e10      1.74728e10   2.44701e10
+ -2.32934e10  -2.75485e10  -1.88177e10      2.03831e10   1.74728e10
+  1.69685e10   1.84815e10   2.32409e10     -1.74728e10  -2.77166e10
+  2.63717e10   1.71366e10   2.41339e10     -2.32934e10  -1.69685e10
+ -1.71366e10  -2.24004e10  -2.11712e10  …   2.75485e10   1.84815e10
+  2.27891e10   1.57918e10   2.50269e10     -1.6128e10   -1.92064e10
+  2.6708e10    2.49744e10   1.99945e10     -1.74728e10  -2.44701e10
+  2.32934e10   2.75485e10   1.88177e10     -2.03831e10  -1.74728e10
+ -1.69685e10  -1.84815e10  -2.32409e10      1.74728e10   2.77166e10
+ -2.63717e10  -1.71366e10  -2.41339e10  …   2.32934e10   1.69685e10
+  1.71366e10   2.24004e10   2.11712e10     -2.75485e10  -1.84815e10
+ -2.27891e10  -1.57918e10  -2.50269e10      1.6128e10    1.92064e10
+ -3.25285e10  -2.22847e10  -2.17804e10      1.6128e10    1.59599e10
+ -2.22847e10  -3.00069e10  -1.82501e10      2.48588e10   2.09399e10
+ -2.17804e10  -1.82501e10  -2.44593e10  …   2.06037e10   2.26734e10
+  2.05512e10   1.98264e10   2.2348e10      -2.46382e10  -2.54788e10
+ -1.6128e10   -2.48588e10  -2.06037e10      3.20242e10   2.19485e10
+ -1.59599e10  -2.09399e10  -2.26734e10      2.19485e10   3.11836e10</pre>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[17]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-julia"><pre><span></span><span class="n">ke_ana</span> <span class="o">=</span> <span class="n">int_f_K</span><span class="p">(</span><span class="n">ue</span><span class="p">,</span> <span class="n">plastic</span><span class="p">)[</span><span class="mi">2</span><span class="p">]</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area">
+
+    <div class="prompt output_prompt">Out[17]:</div>
+
+
+
+
+<div class="output_text output_subarea output_execute_result">
+<pre>24×24 Matrix{Float64}:
+  3.25285e10   2.22847e10   2.17804e10  …  -1.6128e10   -1.59599e10
+  2.22847e10   3.00069e10   1.82501e10     -2.48588e10  -2.09399e10
+  2.17804e10   1.82501e10   2.44593e10     -2.06037e10  -2.26734e10
+ -2.05512e10  -1.98264e10  -2.2348e10       2.46382e10   2.54788e10
+  1.6128e10    2.48588e10   2.06037e10     -3.20242e10  -2.19485e10
+  1.59599e10   2.09399e10   2.26734e10  …  -2.19485e10  -3.11836e10
+ -2.6708e10   -2.49744e10  -1.99945e10      1.74728e10   2.44701e10
+ -2.32934e10  -2.75485e10  -1.88177e10      2.03831e10   1.74728e10
+  1.69685e10   1.84815e10   2.32409e10     -1.74728e10  -2.77166e10
+  2.63717e10   1.71366e10   2.41339e10     -2.32934e10  -1.69685e10
+ -1.71366e10  -2.24004e10  -2.11712e10  …   2.75485e10   1.84815e10
+  2.27891e10   1.57918e10   2.50269e10     -1.6128e10   -1.92064e10
+  2.6708e10    2.49744e10   1.99945e10     -1.74728e10  -2.44701e10
+  2.32934e10   2.75485e10   1.88177e10     -2.03831e10  -1.74728e10
+ -1.69685e10  -1.84815e10  -2.32409e10      1.74728e10   2.77166e10
+ -2.63717e10  -1.71366e10  -2.41339e10  …   2.32934e10   1.69685e10
+  1.71366e10   2.24004e10   2.11712e10     -2.75485e10  -1.84815e10
+ -2.27891e10  -1.57918e10  -2.50269e10      1.6128e10    1.92064e10
+ -3.25285e10  -2.22847e10  -2.17804e10      1.6128e10    1.59599e10
+ -2.22847e10  -3.00069e10  -1.82501e10      2.48588e10   2.09399e10
+ -2.17804e10  -1.82501e10  -2.44593e10  …   2.06037e10   2.26734e10
+  2.05512e10   1.98264e10   2.2348e10      -2.46382e10  -2.54788e10
+ -1.6128e10   -2.48588e10  -2.06037e10      3.20242e10   2.19485e10
+ -1.59599e10  -2.09399e10  -2.26734e10      2.19485e10   3.11836e10</pre>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[18]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-julia"><pre><span></span><span class="n">ke_ad</span> <span class="n">≈</span> <span class="n">ke_fd</span> <span class="n">≈</span> <span class="n">ke_ana</span>
+</pre></div>
+
+    </div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area">
+
+    <div class="prompt output_prompt">Out[18]:</div>
+
+
+
+
+<div class="output_text output_subarea output_execute_result">
+<pre>true</pre>
 </div>
 
 </div>
